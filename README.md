@@ -2699,4 +2699,169 @@ Run the app!
 
 Try using the browser tools to simulate being offline. Note that the app still works.
 
-In the future, we will add the ability to synchronize data to a server when a network connection is available.
+## Synchronize Data to a Server
+
+In this demo, the idea is to have the application use the `CustomerRepository` repository when the network connectivity is available and the `CustomerIndexedDBRepository` repository when not.
+
+### Online/Offline Indicator
+
+Let's first add an Online/Offline indicator in the UI. The idea is to use `JavaScript Interop IJSRuntime` to use the `DOM APIs` and take advantage of `navigator.onLine`, and conversely have the `JavaScript` code, notify the Blazor app, of any changes by subscribing to online and offline events using `window.addEventListener` to change the UI accordingly.
+
+ Add a Razor component, under the `Shared` folder, and call it `ConnectivityIndicator.razor`.
+
+Add the following code:
+
+```razor
+@inject IJSRuntime _jsRuntime;
+@implements IAsyncDisposable
+
+@if (IsOnline)
+{
+    @ShowOnline
+}
+else
+{
+    @ShowOffline
+}
+
+@code {
+    [Parameter]
+    public RenderFragment ShowOnline { get; set; }
+
+    [Parameter]
+    public RenderFragment ShowOffline { get; set; }
+
+    public bool IsOnline { get; set; }
+
+    [JSInvokable("ConnectivityChanged")]
+    public void OnConnectivityChanged(bool isOnline)
+    {
+        if (IsOnline != isOnline)
+        {
+            IsOnline = isOnline;
+        }
+
+        StateHasChanged();
+    }
+
+    protected override async Task OnInitializedAsync() {
+        await base.OnInitializedAsync();
+
+        await _jsRuntime.InvokeVoidAsync("connectivity.initialize", DotNetObjectReference.Create(this));
+    }
+
+    public async ValueTask DisposeAsync() {
+        await _jsRuntime.InvokeVoidAsync("connectivity.`dispose`");
+    }
+}
+```
+
+>:point_up: Notice the use of the `IJSRuntime` to invoke functions `initialize` and `dispose` in `JavaScript`. They do not exist yet.
+
+Let's create a `js` folder under `wwwroot`, and add a new `JavaScript` file called `connectivity.js`, and add the following code:
+
+```javascript
+let notify;
+
+window.connectivity = {
+    initialize: function (interop) {
+
+        notify = function () {
+            interop.invokeMethodAsync("ConnectivityChanged", navigator.onLine);
+        }
+
+        window.addEventListener("online", notify);
+        window.addEventListener("offline", notify);
+
+        notify(navigator.onLine);
+    },
+    dispose: function () {
+
+        if (handler != null) {
+
+            window.removeEventListener("online", notify);
+            window.removeEventListener("offline", notify);
+        }
+    }
+};
+```
+
+Open `index.html`, under `wwwroot`, and add a reference to `connectivity.js` below the `BlazorDB.js` reference we added earlier.
+
+```html
+<script src="js/connectivity.js"></script>
+```
+
+The complete file should look like this:
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>RepositoryDemo</title>
+    <base href="/" />
+    <link href="css/bootstrap/bootstrap.min.css" rel="stylesheet" />
+    <link href="css/app.css" rel="stylesheet" />
+    <link href="RepositoryDemo.Client.styles.css" rel="stylesheet" />
+</head>
+
+<body>
+    <div id="app">Loading...</div>
+
+    <div id="blazor-error-ui">
+        An unhandled error has occurred.
+        <a href="" class="reload">Reload</a>
+        <a class="dismiss">🗙</a>
+    </div>
+    <script src="_framework/blazor.webassembly.js"></script>
+    <script src="_content/BlazorIndexedDB/dexie.min.js"></script>
+    <script src="_content/BlazorIndexedDB/blazorDB.js"></script>
+    <script src="js/connectivity.js"></script>
+</body>
+
+</html>
+```
+
+Add `internet-off.png` and `internet-on.png` images under the `wwwroot\images` folder, which we are going to use to display network connectivity status.
+
+Open `MainLayout.razor` and add the new `ConnectivityIndicator` component, above the `About` line.
+
+```xaml
+@inherits LayoutComponentBase
+
+<div class="page">
+    <main>
+        <div class="top-row px-4">
+              <ConnectivityIndicator>
+                <ShowOnline>
+                    <img alt="Online" title="Application running online." src="./images/internet-on.png" />
+                </ShowOnline>
+                <ShowOffline>
+                    <img alt="Offline" title="Application running offline." src="./images/internet-off.png" />
+                </ShowOffline>
+            </ConnectivityIndicator>
+
+            <a href="https://docs.microsoft.com/aspnet/" target="_blank">About</a>
+        </div>
+
+        <article class="content px-4">
+            @Body
+        </article>
+    </main>
+</div>
+```
+
+Run the application, you should be able to see a green connectivity icon when running online, and grey when running offline.
+
+Running online:
+
+![Running Online](images/96a92f8d2e159909a737f5a9f1e4512908276e6f0362839905cf5c0c9a83d733.png)  
+
+Running offline:
+
+![Running Offline](images/6ecfd0e266a14d6950caadc543f8b2f6a66c747edfc93f51d6ff49e9be939bd4.png)  
+
+>:tip: Use the Browser's Network/Offline mode to test the functionality.
