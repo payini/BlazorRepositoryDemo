@@ -2865,3 +2865,81 @@ Running offline:
 ![Running Offline](images/6ecfd0e266a14d6950caadc543f8b2f6a66c747edfc93f51d6ff49e9be939bd4.png)  
 
 >:tip: Use the Browser's Network/Offline mode to test the functionality.
+
+### Change Repositories Based on Connectivity
+
+Now we are going to add the ability to use the `CustomerRepository` repository when working online, and automatically fallback to `CustomerIndexedDBRepository` when working offline, by leveraging the `connectivity.js` file we added above.
+
+Open `index.razor` and change `@inject CustomerIndexedDBRepository CustomerManager` to `@inject CustomerIndexedDBRepository CustomerOfflineManager`, and add another line to inject the `CustomerRepository` repository `@inject CustomerRepository CustomerOnlineManager`.
+
+Also inject `IJSRuntime` and implement `IAsyncDisposable`. The top file should look like this:
+
+```razor
+@page "/"
+@inject CustomerRepository CustomerOnlineManager
+@inject CustomerIndexedDBRepository CustomerOfflineManager
+@inject IJSRuntime _jsRuntime;
+@implements IAsyncDisposable
+```
+
+Under the `@code` section of ths same file, add a new `CustomerManager` property to return the correct manager, depending of network connectivity, and an `IsOnline` property to store the current status of the network connectivity.
+
+```csharp
+    public IRepository<Customer> CustomerManager 
+    {
+        get { return IsOnline ? CustomerOnlineManager : CustomerOfflineManager; }
+    }
+
+    public bool IsOnline { get; set; }
+```
+
+In a similar way we added the `OnConnectivityChanged` and `DisposeAsync` methods in our `ConnectivityIndicator` component, we are going to add those to the file.
+
+```razor
+    [JSInvokable("ConnectivityChanged")]
+    public void OnConnectivityChanged(bool isOnline)
+    {
+        if (IsOnline != isOnline)
+        {
+            IsOnline = isOnline;
+        }
+
+        StateHasChanged();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await _jsRuntime.InvokeVoidAsync("connectivity.dispose");
+    }
+```
+
+Add `await _jsRuntime.InvokeVoidAsync("connectivity.initialize", DotNetObjectReference.Create(this));` under the existing `protected override async Task OnInitializedAsync()`, before `await AddCustomers();`.
+
+```razor
+    protected override async Task OnInitializedAsync()
+    {
+        await _jsRuntime.InvokeVoidAsync("connectivity.initialize", DotNetObjectReference.Create(this));
+        await AddCustomers();
+    }
+```
+
+Finally, open `Program.cs` file and add register the `CustomerRepository` above `CustomerIndexedDBRepository`.
+
+```csharp
+builder.Services.AddScoped<CustomerRepository>();
+builder.Services.AddScoped<CustomerIndexedDBRepository>();
+```
+
+Now run tha app.
+
+Try this test, run the application offline, and delete Rocky and Hugh, and notice the IndexedDB show just two customers.
+
+![IndexedDB](images/03bd4ffc9aae33ab0695a58509beed9958382ce9fe7caf47cb3a66f7aba331fa.png)  
+
+Now, enable back Network connectivity, and click on Reset Data.
+
+If you refresh the IndexedDB, you will notice it will still show up two customers, but if you display the data in the RepositoryDemo SQL database, you will see all customers got reloaded.
+
+![SQL Database](images/c58ef6d6a641bf3caed297a880ed9ead97d819c66fc080c6724f784c0019a037.png)  
+
+This is because both databases are independent of each other. Now, let's add the ability to synchronize both databases in the next demo.

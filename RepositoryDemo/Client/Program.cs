@@ -30,5 +30,7 @@ builder.Services.AddBlazorDB(options =>
         }
     };
 });
+
+builder.Services.AddScoped<CustomerRepository>();
 builder.Services.AddScoped<CustomerIndexedDBRepository>();
 await builder.Build().RunAsync();

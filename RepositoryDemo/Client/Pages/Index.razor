@@ -1,5 +1,8 @@
 ﻿@page "/"
-@inject CustomerIndexedDBRepository CustomerManager
+@inject CustomerRepository CustomerOnlineManager
+@inject CustomerIndexedDBRepository CustomerOfflineManager
+@inject IJSRuntime _jsRuntime;
+@implements IAsyncDisposable
 
 <h1>Repository Demo</h1>
 
@@ -38,7 +41,6 @@
 <br />
 <p>@JennyMessage</p>
 
-
 @code
 {
     List<Customer> Customers = new List<Customer>();
@@ -47,6 +49,29 @@
     bool CaseSensitive = false;
     bool Descending = false;
     FilterOperator filterOption = FilterOperator.StartsWith;
+
+    public IRepository<Customer> CustomerManager
+    {
+        get { return IsOnline ? CustomerOnlineManager : CustomerOfflineManager; }
+    }
+
+    public bool IsOnline { get; set; }
+
+    [JSInvokable("ConnectivityChanged")]
+    public void OnConnectivityChanged(bool isOnline)
+    {
+        if (IsOnline != isOnline)
+        {
+            IsOnline = isOnline;
+        }
+
+        StateHasChanged();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await _jsRuntime.InvokeVoidAsync("connectivity.dispose");
+    }
 
     void SelectedOptionChanged(ChangeEventArgs args)
     {
@@ -151,6 +176,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await _jsRuntime.InvokeVoidAsync("connectivity.initialize", DotNetObjectReference.Create(this));
         await AddCustomers();
     }
 
@@ -173,10 +199,10 @@
 
     async Task AddCustomers()
     {
-        
+
         // Added these lines to not clobber the existing data
         var all = await CustomerManager.GetAllAsync();
-        if (all.Count() > 0)
+        if (all?.Count() > 0)
         {
             await Reload();
             return;
