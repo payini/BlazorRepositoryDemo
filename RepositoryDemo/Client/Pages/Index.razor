@@ -1,8 +1,5 @@
 ﻿@page "/"
-@inject CustomerRepository CustomerOnlineManager
-@inject CustomerIndexedDBRepository CustomerOfflineManager
-@inject IJSRuntime _jsRuntime;
-@implements IAsyncDisposable
+@inject CustomerIndexedDBSyncRepository CustomerManager
 
 <h1>Repository Demo</h1>
 
@@ -49,29 +46,6 @@
     bool CaseSensitive = false;
     bool Descending = false;
     FilterOperator filterOption = FilterOperator.StartsWith;
-
-    public IRepository<Customer> CustomerManager
-    {
-        get { return IsOnline ? CustomerOnlineManager : CustomerOfflineManager; }
-    }
-
-    public bool IsOnline { get; set; }
-
-    [JSInvokable("ConnectivityChanged")]
-    public void OnConnectivityChanged(bool isOnline)
-    {
-        if (IsOnline != isOnline)
-        {
-            IsOnline = isOnline;
-        }
-
-        StateHasChanged();
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        await _jsRuntime.InvokeVoidAsync("connectivity.dispose");
-    }
 
     void SelectedOptionChanged(ChangeEventArgs args)
     {
@@ -139,7 +113,7 @@
                     select x).FirstOrDefault();
         if (hugh != null)
         {
-            await CustomerManager.DeleteByIdAsync(hugh.Id);
+            await CustomerManager.DeleteAsync(hugh);
             await Reload();
         }
     }
@@ -176,7 +150,6 @@
 
     protected override async Task OnInitializedAsync()
     {
-        await _jsRuntime.InvokeVoidAsync("connectivity.initialize", DotNetObjectReference.Create(this));
         await AddCustomers();
     }
 

@@ -27,10 +27,17 @@ builder.Services.AddBlazorDB(options =>
             PrimaryKey = "Id",      // Primary Key of entity
             PrimaryKeyAuto = true,  // Whether or not the Primary key is generated
             Indexes = new List<string> { "Id", "Name" }
+        },
+         new StoreSchema()
+        {
+            Name = $"Customer{Globals.LocalTransactionsSuffix}",// Name of entity
+            PrimaryKey = "Id",      // Primary Key of entity
+            PrimaryKeyAuto = true,  // Whether or not the Primary key is generated
+            Indexes = new List<string> { "Id" }
         }
     };
 });
 
 builder.Services.AddScoped<CustomerRepository>();
-builder.Services.AddScoped<CustomerIndexedDBRepository>();
+builder.Services.AddScoped<CustomerIndexedDBSyncRepository>();
 await builder.Build().RunAsync();
