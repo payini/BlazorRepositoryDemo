@@ -3524,3 +3524,5 @@ public async Task<bool> SyncLocalToServer()
 When running the application online we will see that `SyncLocalToServer()` is going to get triggered, and it's going to replay all the transactions in the `Customer_transactions` table.
 
 At the end, all records from `Customer_transactions` will get deleted, as the data has been applied to the server, and the application is running online.
+
+There are obviously many other factors to consider, such as data collisions, but this is a simple demo to illustrate the synching approach, and the benefits of using the **repository` pattern**.
