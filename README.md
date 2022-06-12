@@ -2707,11 +2707,11 @@ In this demo, the idea is to have the application use the `CustomerRepository` r
 
 Let's first add an Online/Offline indicator in the UI. The idea is to use `JavaScript Interop IJSRuntime` to use the `DOM APIs` and take advantage of `navigator.onLine`, and conversely have the `JavaScript` code, notify the Blazor app, of any changes by subscribing to online and offline events using `window.addEventListener` to change the UI accordingly.
 
- Add a Razor component, under the `Shared` folder, and call it `ConnectivityIndicator.razor`.
+Add a Razor component, under the `Shared` folder, and call it `ConnectivityIndicator.razor`.
 
 Add the following code:
 
-```razor
+```c#
 @inject IJSRuntime _jsRuntime;
 @implements IAsyncDisposable
 
@@ -2747,7 +2747,8 @@ else
     protected override async Task OnInitializedAsync() {
         await base.OnInitializedAsync();
 
-        await _jsRuntime.InvokeVoidAsync("connectivity.initialize", DotNetObjectReference.Create(this));
+        await _jsRuntime.InvokeVoidAsync("connectivity.initialize",
+            DotNetObjectReference.Create(this));
     }
 
     public async ValueTask DisposeAsync() {
@@ -2756,7 +2757,7 @@ else
 }
 ```
 
->:point_up: Notice the use of the `IJSRuntime` to invoke functions `initialize` and `dispose` in `JavaScript`. They do not exist yet.
+> ☝️ Notice the use of the `IJSRuntime` to invoke functions in `JavaScript`. We'll get to that.
 
 Let's create a `js` folder under `wwwroot`, and add a new `JavaScript` file called `connectivity.js`, and add the following code:
 
@@ -2788,7 +2789,7 @@ window.connectivity = {
 
 Open `index.html`, under `wwwroot`, and add a reference to `connectivity.js` below the `BlazorDB.js` reference we added earlier.
 
-```html
+```
 <script src="js/connectivity.js"></script>
 ```
 
@@ -2829,7 +2830,7 @@ Add `internet-off.png` and `internet-on.png` images under the `wwwroot\images` f
 
 Open `MainLayout.razor` and add the new `ConnectivityIndicator` component, above the `About` line.
 
-```xaml
+```html
 @inherits LayoutComponentBase
 
 <div class="page">
@@ -2837,10 +2838,14 @@ Open `MainLayout.razor` and add the new `ConnectivityIndicator` component, above
         <div class="top-row px-4">
               <ConnectivityIndicator>
                 <ShowOnline>
-                    <img alt="Online" title="Application running online." src="./images/internet-on.png" />
+                    <img alt="Online" 
+                        title="Application running online." 
+                        src="./images/internet-on.png" />
                 </ShowOnline>
                 <ShowOffline>
-                    <img alt="Offline" title="Application running offline." src="./images/internet-off.png" />
+                    <img alt="Offline" 
+                        title="Application running offline." 
+                        src="./images/internet-off.png" />
                 </ShowOffline>
             </ConnectivityIndicator>
 
@@ -2858,13 +2863,13 @@ Run the application, you should be able to see a green connectivity icon when ru
 
 Running online:
 
-![Running Online](images/96a92f8d2e159909a737f5a9f1e4512908276e6f0362839905cf5c0c9a83d733.png)  
+![image-20220609212248231](images/image-20220609212248231.png)
 
 Running offline:
 
-![Running Offline](images/6ecfd0e266a14d6950caadc543f8b2f6a66c747edfc93f51d6ff49e9be939bd4.png)  
+![image-20220609212350230](images/image-20220609212350230.png)
 
->:tip: Use the Browser's Network/Offline mode to test the functionality.
+> :tip: Use the Browser's Network/Offline mode to test the functionality.
 
 ### IndexedDBSyncRepository
 
@@ -2872,34 +2877,38 @@ Now we are going to add the ability to use the `CustomerRepository` repository w
 
 In order to keep the original `CustomerIndexedDBRepository` intact, let's create a duplicate of `IndexedDBRepository.cs` and name it `IndexedDBSyncRepository.cs`, and rename the class to `IndexedDBSyncRepository`. Also make a copy as well of `CustomerIndexedDBRepository.cs` as `CustomerIndexedDBSyncRepository.cs`, and make the latter implement the new `IndexedDBSyncRepository`.
 
-```csharp
+```c#
 using Microsoft.JSInterop;
 
 public class CustomerIndexedDBSyncRepository : IndexedDBSyncRepository<Customer>
 {
-    public CustomerIndexedDBSyncRepository(IBlazorDbFactory dbFactory, CustomerRepository customerRepository, IJSRuntime jsRuntime)
+    public CustomerIndexedDBSyncRepository(IBlazorDbFactory dbFactory, 
+        CustomerRepository customerRepository, IJSRuntime jsRuntime)
         : base("RepositoryDemo", "Id", true, dbFactory, customerRepository, jsRuntime)
     {
     }
 }
 ```
 
-![IndexedDBSyncRepository](images/7476914c97e732e13a94e8e5600e38b6ef5c3076023f672f8c0d23982fe767d8.png)  
+![image-20220609212047709](images/image-20220609212047709.png)
 
 We are going to need to track whether there is connectivity or not, so we are going to leverage our `connectivity.js` code, so we are going to need `IJSRuntime`. Let's inject it.
 
-Open `IndexedDBSyncRepository.cs` and add a using statement `using Microsoft.JSInterop`, add `private readonly IJSRuntime _jsRuntime` as a private variable, and `, IJSRuntime jsRuntime` to the constructor and assign the injected `jsRuntime` to the `_jsRuntime` variable with  `_jsRuntime = jsRuntime;`.
+Open `IndexedDBSyncRepository.cs` and add a using statement `using Microsoft.JSInterop`, add `private readonly IJSRuntime _jsRuntime` as a private variable, and `, IJSRuntime jsRuntime` to the constructor and assign the injected `jsRuntime` to the `_jsRuntime` variable with `_jsRuntime = jsRuntime;`.
 
 We are going to use `APIRepository` when online, so let's inject that as well, in a similar way adding `private readonly APIRepository<TEntity> _apiRepository;` in the variables section, `, APIRepository<TEntity> apiRepository,` in the constructor, and assign the value with `_apiRepository = apiRepository;`.
 
+We're also going to ad an event to let our user know about online status changes. That will let them reload data from the appropriate source.
+
 The modified code should look like this:
 
-```csharp
+```c#
 using Microsoft.JSInterop;
 using RepositoryDemo.Client;
 using System.Reflection;
 
-public class IndexedDBSyncRepository<TEntity> : IRepository<TEntity> where TEntity : class
+public class IndexedDBSyncRepository<TEntity> : IRepository<TEntity>
+    where TEntity : class
 {
     // injected
     IBlazorDbFactory _dbFactory;
@@ -2911,10 +2920,18 @@ public class IndexedDBSyncRepository<TEntity> : IRepository<TEntity> where TEnti
 
     IndexedDbManager manager;
     string storeName = "";
+    string keyStoreName = "";
     Type entityType;
     PropertyInfo primaryKey;
+    public bool IsOnline { get; set; } = true;
 
-    public IndexedDBSyncRepository(string dbName, string primaryKeyName, bool autoGenerateKey, IBlazorDbFactory dbFactory, APIRepository<TEntity> apiRepository, IJSRuntime jsRuntime)
+    public delegate void OnlineStatusEventHandler(object sender, 
+        OnlineStatusEventArgs e);
+    public event OnlineStatusEventHandler OnlineStatusChanged;
+
+    public IndexedDBSyncRepository(string dbName, string primaryKeyName, 
+        bool autoGenerateKey, IBlazorDbFactory dbFactory, 
+        APIRepository<TEntity> apiRepository, IJSRuntime jsRuntime)
     {
         _dbName = dbName;
         _dbFactory = dbFactory;
@@ -2925,7 +2942,8 @@ public class IndexedDBSyncRepository<TEntity> : IRepository<TEntity> where TEnti
 
         entityType = typeof(TEntity);
         storeName = entityType.Name;
-        primaryKey = entityType.GetProperty(primaryKeyName);    
+        keyStoreName = $"{storeName}{Globals.KeysSuffix}";
+        primaryKey = entityType.GetProperty(primaryKeyName);
     }
 ```
 
@@ -2933,7 +2951,7 @@ In a similar way we added the `OnConnectivityChanged` and `DisposeAsync` methods
 
 Add the following code above the constructor:
 
-```csharp
+```c#
     public bool IsOnline { get; set; } = true;
 
     [JSInvokable("ConnectivityChanged")]
@@ -2948,46 +2966,73 @@ Add the following code above the constructor:
 
 And add the following line to initialize the connectivity code, at the end of the constructor:
 
-```csharp
-_ = _jsRuntime.InvokeVoidAsync("connectivity.initialize", DotNetObjectReference.Create(this));
+```c#
+_ = _jsRuntime.InvokeVoidAsync("connectivity.initialize", 
+    DotNetObjectReference.Create(this));
 ```
 
 Now, we are going to make several changes to the repository, to accomplish the following tasks:
 
 - Use IsOnline to determine whether to call the methods in the `APIRepository` (Online) or the IndexedDB methods (Offline) to record transactions on the server, or locally.
 - When working offline, we are going to record the transaction details for each CRUD operation, in a `*_transaction` table named after the original table.
+- We are going to keep a map of records added to IndexedDB and those online, so when we update or delete, we can pass the right primary key
 
-When recording the transaction details for each CRUD operation, we are going to need a constant for the suffix of the table name, so let's add a `Globals.cs`.
+We need to add a couple more classes in the *Services* folder.
 
-```csharp
+This will support our mapping between local and online primary keys:
+
+*OnlineOfflineKey.cs*:
+
+```c#
+public class OnlineOfflineKey
+{
+    public object OnlineId { get; set; }
+    public object LocalId { get; set; }
+}
+```
+
+This class will support the `OnlineStatusChanged` event:
+
+*OnlineStatusEventArgs.cs*:
+
+```c#
+public class OnlineStatusEventArgs : EventArgs
+{
+    public bool IsOnline { get; set; }
+}
+```
+
+When recording the transaction details for each CRUD operation, we are going to need constants for the suffix of the table name, and also the suffix for the key mapping table name so let's add a `Globals.cs`.
+
+```c#
 namespace RepositoryDemo.Client
 {
     public static class Globals
     {
         public const string LocalTransactionsSuffix = "_transactions";
+        public const string KeysSuffix = "_keys";
     }
 }
 ```
 
 We are going to need a transaction type, to store the operation performed, so add a `LocalTransactionTypes.cs` to hold the following enum.
 
-```csharp
+```c#
 namespace RepositoryDemo.Client
 {
     public enum LocalTransactionTypes
     {
         Insert = 0,
-        UpdateById = 1,
-        DeleteById = 2,
-        DeleteByEntity = 3,
-        DeleteAll = 4
+        Update = 1,
+        Delete = 2,
+        DeleteAll = 3
     }
 }
 ```
 
 We are also going to need a data object, to hold the information we are going to record. Add a `LocalTransaction.cs` with the following code:
 
-```csharp
+```c#
 using RepositoryDemo.Client;
 
 public class LocalTransaction<TEntity>
@@ -3003,12 +3048,15 @@ Now we add the rest of the code, to accomplish the tasks above.
 
 The complete code should look like this:
 
-```csharp
+*IndexedDBSyncRepository.cs*:
+
+```c#
 using Microsoft.JSInterop;
 using RepositoryDemo.Client;
 using System.Reflection;
 
-public class IndexedDBSyncRepository<TEntity> : IRepository<TEntity> where TEntity : class
+public class IndexedDBSyncRepository<TEntity> : IRepository<TEntity> 
+    where TEntity : class
 {
     // injected
     IBlazorDbFactory _dbFactory;
@@ -3020,26 +3068,18 @@ public class IndexedDBSyncRepository<TEntity> : IRepository<TEntity> where TEnti
 
     IndexedDbManager manager;
     string storeName = "";
+    string keyStoreName = "";
     Type entityType;
     PropertyInfo primaryKey;
-
-    public string LocalStoreName
-    {
-        get { return $"{storeName}{Globals.LocalTransactionsSuffix}"; }
-    }
-
     public bool IsOnline { get; set; } = true;
 
-    [JSInvokable("ConnectivityChanged")]
-    public async void OnConnectivityChanged(bool isOnline)
-    {
-        if (IsOnline != isOnline)
-        {
-            IsOnline = isOnline;
-        }
-    }
+    public delegate void OnlineStatusEventHandler(object sender, 
+        OnlineStatusEventArgs e);
+    public event OnlineStatusEventHandler OnlineStatusChanged;
 
-    public IndexedDBSyncRepository(string dbName, string primaryKeyName, bool autoGenerateKey, IBlazorDbFactory dbFactory, APIRepository<TEntity> apiRepository, IJSRuntime jsRuntime)
+    public IndexedDBSyncRepository(string dbName, string primaryKeyName, 
+        bool autoGenerateKey, IBlazorDbFactory dbFactory, 
+        APIRepository<TEntity> apiRepository, IJSRuntime jsRuntime)
     {
         _dbName = dbName;
         _dbFactory = dbFactory;
@@ -3050,9 +3090,34 @@ public class IndexedDBSyncRepository<TEntity> : IRepository<TEntity> where TEnti
 
         entityType = typeof(TEntity);
         storeName = entityType.Name;
+        keyStoreName = $"{storeName}{Globals.KeysSuffix}";
         primaryKey = entityType.GetProperty(primaryKeyName);
 
-        _ = _jsRuntime.InvokeVoidAsync("connectivity.initialize", DotNetObjectReference.Create(this));
+        _ = _jsRuntime.InvokeVoidAsync("connectivity.initialize",
+            DotNetObjectReference.Create(this));
+    }
+
+    public string LocalStoreName
+    {
+        get { return $"{storeName}{Globals.LocalTransactionsSuffix}"; }
+    }
+
+    [JSInvokable("ConnectivityChanged")]
+    public async void OnConnectivityChanged(bool isOnline)
+    {
+        if (IsOnline != isOnline)
+        {
+            IsOnline = isOnline;
+            OnlineStatusChanged?.Invoke(this, 
+                new OnlineStatusEventArgs { IsOnline = false });
+        }
+
+        if (IsOnline)
+        {
+            await SyncLocalToServer();
+            OnlineStatusChanged?.Invoke(this, 
+                new OnlineStatusEventArgs { IsOnline = true });
+        }
     }
 
     private async Task EnsureManager()
@@ -3067,24 +3132,36 @@ public class IndexedDBSyncRepository<TEntity> : IRepository<TEntity> where TEnti
     {
         if (IsOnline)
             await _apiRepository.DeleteAllAsync();
-        else
-            await DeleteAllOfflineAsync();
+
+        await DeleteAllOfflineAsync();
     }
 
     private async Task DeleteAllOfflineAsync()
     {
         await EnsureManager();
+
+        // clear the keys table
+        await manager.ClearTableAsync(keyStoreName);
+
+        // clear the data table
         await manager.ClearTableAsync(storeName);
+
         RecordDeleteAllAsync();
     }
 
     public async void RecordDeleteAllAsync()
     {
+        if (IsOnline) return;
+
         var action = LocalTransactionTypes.DeleteAll;
         var record = new StoreRecord<LocalTransaction<TEntity>>()
         {
             StoreName = LocalStoreName,
-            Record = new LocalTransaction<TEntity> { Entity = null, Action = action, ActionName = action.ToString() }
+            Record = new LocalTransaction<TEntity> {
+                Entity = null, 
+                Action = action, 
+                ActionName = action.ToString()
+            }
         };
 
         await manager.AddRecordAsync(record);
@@ -3092,10 +3169,19 @@ public class IndexedDBSyncRepository<TEntity> : IRepository<TEntity> where TEnti
 
     public async Task<bool> DeleteAsync(TEntity EntityToDelete)
     {
+        bool deleted = false;
+
         if (IsOnline)
-            return await _apiRepository.DeleteAsync(EntityToDelete);
+        {
+            deleted = await _apiRepository.DeleteAsync(EntityToDelete);
+            await DeleteOfflineAsync(EntityToDelete);
+        }
         else
-            return await DeleteOfflineAsync(EntityToDelete);
+        {
+            deleted = await DeleteOfflineAsync(EntityToDelete);
+        }
+
+        return deleted;
     }
 
     public async Task<bool> DeleteOfflineAsync(TEntity EntityToDelete)
@@ -3107,10 +3193,19 @@ public class IndexedDBSyncRepository<TEntity> : IRepository<TEntity> where TEnti
 
     public async Task<bool> DeleteByIdAsync(object Id)
     {
+        bool deleted = false;
+
         if (IsOnline)
-            return await _apiRepository.DeleteByIdAsync(Id);
+        {
+            deleted = await _apiRepository.DeleteByIdAsync(Id);
+            await DeleteByIdOfflineAsync(Id);
+        }
         else
-            return await DeleteByIdOfflineAsync(Id);
+        {
+            deleted = await DeleteByIdOfflineAsync(Id);
+        }
+
+        return deleted;
     }
 
     public async Task<bool> DeleteByIdOfflineAsync(object Id)
@@ -3131,23 +3226,75 @@ public class IndexedDBSyncRepository<TEntity> : IRepository<TEntity> where TEnti
 
     public async void RecordDeleteByIdAsync(object id)
     {
-        var action = LocalTransactionTypes.DeleteByEntity;
+        if (IsOnline) return;
+        var action = LocalTransactionTypes.Delete;
 
         var entity = await GetByIdAsync(id);
 
         var record = new StoreRecord<LocalTransaction<TEntity>>()
         {
             StoreName = LocalStoreName,
-            Record = new LocalTransaction<TEntity> { Entity = entity, Action = action, ActionName = action.ToString(), Id = int.Parse(id.ToString()) }
+            Record = new LocalTransaction<TEntity> {
+                Entity = entity, 
+                Action = action, 
+                ActionName = action.ToString(), 
+                Id = int.Parse(id.ToString()) }
         };
 
         await manager.AddRecordAsync(record);
     }
 
+    /// <summary>
+    /// just to satisfy the contract
+    /// </summary>
+    /// <returns></returns>
     public async Task<IEnumerable<TEntity>> GetAllAsync()
     {
+        return await GetAllAsync(false);
+    }
+
+    public async Task<IEnumerable<TEntity>> GetAllAsync(bool dontSync = false)
+    {
         if (IsOnline)
-            return await _apiRepository.GetAllAsync();
+        {
+            // retrieve all the data
+            var list = await _apiRepository.GetAllAsync();
+            if (list != null)
+            {
+                var allData = list.ToList();
+                if (!dontSync)
+                {
+                    // clear the local db
+                    await DeleteAllOfflineAsync();
+                    // write the values into IndexedDB
+                    var result = await manager.BulkAddRecordAsync<TEntity>
+                        (storeName, allData);
+                    // get all the local data
+                    var localList = await GetAllOfflineAsync();
+                    var localData = (localList).ToList();
+                    // record the primary keys
+                    var keys = new List<OnlineOfflineKey>();
+                    for (int i = 0; i < allData.Count(); i++)
+                    {
+                        var key = new OnlineOfflineKey()
+                        {
+                            OnlineId = primaryKey.GetValue(allData[i]),
+                            LocalId = primaryKey.GetValue(localData[i]),
+                        };
+                        keys.Add(key);
+                    };
+                    // remove all the keys
+                    await manager.ClearTableAsync(keyStoreName);
+                    // store all of the keys
+                    result = await manager.BulkAddRecordAsync<OnlineOfflineKey>
+                        (keyStoreName, keys);
+                }
+                // return the data
+                return allData;
+            }
+            else
+                return null;
+        }
         else
             return await GetAllOfflineAsync();
     }
@@ -3165,7 +3312,7 @@ public class IndexedDBSyncRepository<TEntity> : IRepository<TEntity> where TEnti
     public async Task<IEnumerable<TEntity>> GetAsync(QueryFilter<TEntity> Filter)
     {
         // We have to load all items and use LINQ to filter them. :(
-        var allitems = await GetAllAsync();
+        var allitems = await GetAllAsync(true);
         return Filter.GetFilteredList(allitems);
     }
 
@@ -3189,21 +3336,24 @@ public class IndexedDBSyncRepository<TEntity> : IRepository<TEntity> where TEnti
 
     public async Task<TEntity> InsertAsync(TEntity Entity)
     {
+        TEntity returnValue;
+
         if (IsOnline)
-            return await _apiRepository.InsertAsync(Entity);
+        {
+            returnValue = await _apiRepository.InsertAsync(Entity);
+            await InsertOfflineAsync(Entity);
+        }
         else
-            return await InsertOfflineAsync(Entity);
+        {
+            returnValue = await InsertOfflineAsync(Entity);
+        }
+        return returnValue;
+
     }
 
     public async Task<TEntity> InsertOfflineAsync(TEntity Entity)
     {
         await EnsureManager();
-
-        // set Id field to zero if the key is autogenerated
-        if (_autoGenerateKey)
-        {
-            primaryKey.SetValue(Entity, 0);
-        }
 
         try
         {
@@ -3230,6 +3380,7 @@ public class IndexedDBSyncRepository<TEntity> : IRepository<TEntity> where TEnti
 
     public async void RecordInsertAsync(TEntity Entity)
     {
+        if (IsOnline) return;
         try
         {
             var action = LocalTransactionTypes.Insert;
@@ -3237,7 +3388,11 @@ public class IndexedDBSyncRepository<TEntity> : IRepository<TEntity> where TEnti
             var record = new StoreRecord<LocalTransaction<TEntity>>()
             {
                 StoreName = LocalStoreName,
-                Record = new LocalTransaction<TEntity> { Entity = Entity, Action = action, ActionName = action.ToString() }
+                Record = new LocalTransaction<TEntity> {
+                    Entity = Entity, 
+                    Action = action, 
+                    ActionName = action.ToString()
+                }
             };
 
             await manager.AddRecordAsync(record);
@@ -3250,10 +3405,18 @@ public class IndexedDBSyncRepository<TEntity> : IRepository<TEntity> where TEnti
 
     public async Task<TEntity> UpdateAsync(TEntity EntityToUpdate)
     {
+        TEntity returnValue;
+
         if (IsOnline)
-            return await _apiRepository.UpdateAsync(EntityToUpdate);
+        {
+            await UpdateOfflineAsync(EntityToUpdate);
+            returnValue = await _apiRepository.UpdateAsync(EntityToUpdate);
+        }
         else
-            return await UpdateOfflineAsync(EntityToUpdate);
+        {
+            returnValue = await UpdateOfflineAsync(EntityToUpdate);
+        }
+        return returnValue;
     }
 
     public async Task<TEntity> UpdateOfflineAsync(TEntity EntityToUpdate)
@@ -3282,14 +3445,19 @@ public class IndexedDBSyncRepository<TEntity> : IRepository<TEntity> where TEnti
 
     public async void RecordUpdateAsync(TEntity Entity)
     {
+        if (IsOnline) return;
         try
         {
-            var action = LocalTransactionTypes.UpdateById;
+            var action = LocalTransactionTypes.Update;
 
             var record = new StoreRecord<LocalTransaction<TEntity>>()
             {
                 StoreName = LocalStoreName,
-                Record = new LocalTransaction<TEntity> { Entity = Entity, Action = action, ActionName = action.ToString() }
+                Record = new LocalTransaction<TEntity> {
+                    Entity = Entity, 
+                    Action = action, 
+                    ActionName = action.ToString()
+                }
             };
 
             await manager.AddRecordAsync(record);
@@ -3299,26 +3467,208 @@ public class IndexedDBSyncRepository<TEntity> : IRepository<TEntity> where TEnti
             // log exception
         }
     }
-    
+
+    private async Task<List<OnlineOfflineKey>> GetKeys()
+    {
+        await EnsureManager();
+        var returnList = new List<OnlineOfflineKey>();
+
+        var array = await manager.ToArray<OnlineOfflineKey>(keyStoreName);
+        if (array == null) return null;
+
+        foreach (var key in array)
+        {
+            var onlineId = key.OnlineId;
+            key.OnlineId = JsonConvert.DeserializeObject<object>(onlineId.ToString());
+
+            var localId = key.LocalId;
+            key.LocalId = JsonConvert.DeserializeObject<object>(localId.ToString());
+
+            returnList.Add(key);
+        }
+
+        return returnList;
+    }
+
+    private async Task<TEntity> UpdateKeyFromLocal(TEntity Entity)
+    {
+        var LocalId = primaryKey.GetValue(Entity);
+        LocalId = JsonConvert.DeserializeObject<object>(LocalId.ToString());
+
+        var keys = await GetKeys();
+        if (keys == null) return null;
+
+        var item = (from x in keys 
+            where x.LocalId.ToString() == LocalId.ToString() 
+            select x).FirstOrDefault();
+        
+        if (item == null) return null;
+
+        var key = item.OnlineId;
+
+        var typeName = key.GetType().Name;
+
+        if (typeName == nameof(Int64))
+        {
+            if (primaryKey.PropertyType.Name == nameof(Int32))
+                key = Convert.ToInt32(key);
+        }
+        else if (typeName == "string")
+        {
+            if (primaryKey.PropertyType.Name != "string")
+                key = key.ToString();
+        }
+
+        primaryKey.SetValue(Entity, key);
+
+        return Entity;
+    }
+
+    public async Task<bool> SyncLocalToServer()
+    {
+        if (!IsOnline) return false;
+
+        await EnsureManager();
+
+        var array = await manager.ToArray<LocalTransaction<TEntity>>(LocalStoreName);
+        if (array == null || array.Count == 0)
+            return true;
+        else
+        {
+            foreach (var localTransaction in array.ToList())
+            {
+                try
+                {
+                    switch (localTransaction.Action)
+                    {
+                        case LocalTransactionTypes.Insert:
+                            var insertedEntity = await
+                                _apiRepository.InsertAsync(localTransaction.Entity);
+                            // update the keys table
+                            var key = new OnlineOfflineKey()
+                            {
+                                OnlineId = primaryKey.GetValue(insertedEntity),
+                                LocalId = primaryKey.GetValue(localTransaction.Entity),
+                            };
+                            await manager.AddRecordAsync<OnlineOfflineKey>
+                                (new StoreRecord<OnlineOfflineKey>
+                                    {
+                                        StoreName = keyStoreName,
+                                        Record = key
+                                    });
+                            break;
+
+                        case LocalTransactionTypes.Update:
+                            localTransaction.Entity = await UpdateKeyFromLocal
+                                (localTransaction.Entity);
+                            await _apiRepository.UpdateAsync(localTransaction.Entity);
+                            break;
+
+                        case LocalTransactionTypes.Delete:
+                            localTransaction.Entity = await UpdateKeyFromLocal
+                                (localTransaction.Entity);
+                            await _apiRepository.DeleteAsync(localTransaction.Entity);
+                            break;
+
+                        case LocalTransactionTypes.DeleteAll:
+                            await _apiRepository.DeleteAllAsync();
+                            break;
+
+                        default:
+                            break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                }
+            }
+
+            await DeleteAllTransactionsAsync();
+            return true;
+        }
+    }
+
+    private async Task DeleteAllTransactionsAsync()
+    {
+        await EnsureManager();
+        await manager.ClearTableAsync(LocalStoreName);
+    }
+
+    public async Task<bool> UpdateOfflineIds(TEntity onlineEntity, TEntity offlineEntity)
+    {
+        await EnsureManager();
+
+        object Id = primaryKey.GetValue(offlineEntity);
+
+        var array = await manager.ToArray<LocalTransaction<TEntity>>(LocalStoreName);
+        if (array == null)
+            return false;
+        else
+        {
+            var items = array.Where(i => i.Entity != null).ToList();
+
+            foreach (var item in items)
+            {
+                var updatedEntity = await UpdateOfflineAsync(item, onlineEntity);
+            }
+        }
+
+        return true;
+    }
+
+    public async Task<LocalTransaction<TEntity>>
+        UpdateOfflineAsync(LocalTransaction<TEntity> entityToUpdate, 
+        TEntity onlineEntity)
+    {
+        await EnsureManager();
+
+        object Id = primaryKey.GetValue(entityToUpdate.Entity);
+
+        entityToUpdate.Entity = onlineEntity;
+
+        try
+        {
+            await manager.UpdateRecord(new UpdateRecord<LocalTransaction<TEntity>>()
+            {
+                StoreName = LocalStoreName,
+                Record = entityToUpdate,
+                Key = Id
+            });
+
+            return entityToUpdate;
+        }
+        catch (Exception ex)
+        {
+            // log exception
+            return null;
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
         await _jsRuntime.InvokeVoidAsync("connectivity.dispose");
     }
 }
-
 ```
 
 Open `index.razor` and change `@inject CustomerIndexedDBRepository CustomerManager` to `@inject CustomerIndexedDBSyncRepository CustomerManager`, to use our new repository.
 
-Finally, open `Program.cs` file and add a new `StoreSchema` under the `options.StoreSchemas` BlazorDB options.
+Finally, open `Program.cs` file and add two new `StoreSchema` objects under the `options.StoreSchemas` BlazorDB options.
 
-```csharp
+```c#
 ,
-         new StoreSchema()
+        new StoreSchema()
         {
-            Name = $"Customer{Globals.LocalTransactionsSuffix}",// Name of entity
-            PrimaryKey = "Id",      // Primary Key of entity
-            PrimaryKeyAuto = true,  // Whether or not the Primary key is generated
+            Name = $"Customer{Globals.LocalTransactionsSuffix}",
+            PrimaryKey = "Id",
+            PrimaryKeyAuto = true,
+            Indexes = new List<string> { "Id" }
+        },
+        new StoreSchema()
+        {
+            Name = $"Customer{Globals.KeysSuffix}",
+            PrimaryKey = "Id",
+            PrimaryKeyAuto = true,
             Indexes = new List<string> { "Id" }
         }
 ```
@@ -3327,7 +3677,7 @@ And register `CustomerIndexedDBSyncRepository` below the `CustomerRepository` re
 
 The complete code should look like this:
 
-```csharp
+```c#
 global using System.Net.Http.Json;
 global using Newtonsoft.Json;
 global using System.Net;
@@ -3356,24 +3706,537 @@ builder.Services.AddBlazorDB(options =>
             Name = "Customer",      // Name of entity
             PrimaryKey = "Id",      // Primary Key of entity
             PrimaryKeyAuto = true,  // Whether or not the Primary key is generated
-            Indexes = new List<string> { "Id", "Name" }
+            Indexes = new List<string> { "Id" }
         },
-         new StoreSchema()
+        new StoreSchema()
         {
-            Name = $"Customer{Globals.LocalTransactionsSuffix}",// Name of entity
-            PrimaryKey = "Id",      // Primary Key of entity
-            PrimaryKeyAuto = true,  // Whether or not the Primary key is generated
+            Name = $"Customer{Globals.LocalTransactionsSuffix}",
+            PrimaryKey = "Id",
+            PrimaryKeyAuto = true,
+            Indexes = new List<string> { "Id" }
+        },
+        new StoreSchema()
+        {
+            Name = $"Customer{Globals.KeysSuffix}",
+            PrimaryKey = "Id",
+            PrimaryKeyAuto = true,
             Indexes = new List<string> { "Id" }
         }
     };
 });
 
-builder.Services.AddScoped<CustomerRepository>();
 builder.Services.AddScoped<CustomerIndexedDBSyncRepository>();
 await builder.Build().RunAsync();
 ```
 
-Now run tha app.
+Create a new page in the *Pages* folder called *Syncdemo.razor*:
+
+```c#
+@page "/syncdemo"
+@implements IDisposable
+@inject CustomerIndexedDBSyncRepository CustomerManager
+
+<h1>Offline Repository Sync Demo</h1>
+
+<div style="background-color:lightgray;padding:20px;">
+    This demo:
+    <ul>
+        <li>Downloads all data from server when first run online, and saves to IndexedDB</li>
+        <li>Keeps IndexedDB in sync with online source as you make changes</li>
+        <li>Keeps a list map of items with both local and online primary keys</li>
+        <li>When offline, keeps a list of transactions (insert, update, and delete)</li>
+        <li>When you go back online, it executes those transactions</li>
+    </ul>
+    What it does NOT do (yet):
+    <ul>
+        <li>Check for collisions and deal with the consequences</li>
+        <li>Efficiently sync local db from online source when you go back online after syncing</li>
+    </ul>
+</div>
+<br/>
+@foreach (var customer in Customers)
+{
+        <p>(@customer.Id) @customer.Name, @customer.Email</p>
+}
+
+<button @onclick="AddCustomer">Add Customer</button>
+<button @onclick="UpdateIsadora">Update Isadora</button>
+<button @onclick="DeleteRocky">Delete Rocky</button>
+<button @onclick="DeleteHugh">Delete Hugh</button>
+<button @onclick="GetJenny">GetJenny</button>
+<button @onclick="ResetData">Reset Data</button>
+<br />
+<br />
+<p>
+    Search by Name: <input @bind=@SearchFilter />
+    <button @onclick="Search">Search</button>
+    <br />
+    <br />
+    <input style="zoom:1.5;" type="checkbox" @bind="CaseSensitive" /> Case Sensitive
+    <br />
+    <input style="zoom:1.5;" type="checkbox" @bind="Descending" /> Descending Order
+    <br />
+    <br />
+    Options:<br />
+    <select @onchange="SelectedOptionChanged" size=3 style="padding:10px;">
+        <option selected value="StartsWith">Starts With</option>
+        <option value="EndsWith">Ends With</option>
+        <option value="Contains">Contains</option>
+    </select>
+
+</p>
+
+<br />
+<br />
+<p>@JennyMessage</p>
+
+
+@code
+{
+    List<Customer> Customers = new List<Customer>();
+    string JennyMessage = "";
+    string SearchFilter = "";
+    bool CaseSensitive = false;
+    bool Descending = false;
+    FilterOperator filterOption = FilterOperator.StartsWith;
+
+    bool Initialized = false;
+
+    void SelectedOptionChanged(ChangeEventArgs args)
+    {
+        switch (args.Value.ToString())
+        {
+            case "StartsWith":
+                filterOption = FilterOperator.StartsWith;
+                break;
+            case "EndsWith":
+                filterOption = FilterOperator.EndsWith;
+                break;
+            case "Contains":
+                filterOption = FilterOperator.Contains;
+                break;
+        }
+    }
+
+    async Task Search()
+    {
+        try
+        {
+            var expression = new QueryFilter<Customer>();
+
+            expression.FilterProperties.Add(new FilterProperty { Name = "Name", Value = SearchFilter, Operator = filterOption, CaseSensitive = CaseSensitive });
+            expression.OrderByPropertyName = "Name";
+            expression.OrderByDescending = Descending;
+
+            //// Example, return where Id = 2
+            //expression.FilterProperties.Add(new FilterProperty { Name = "Id", Value = "2", Operator = FilterOperator.Equals });
+            //expression.OrderByPropertyName = "Name";
+            //expression.OrderByDescending = Descending;
+
+            //// Example, return where Id > 1
+            //expression.FilterProperties.Add(new FilterProperty { Name = "Id", Value = "1", Operator = FilterOperator.GreaterThan });
+            //expression.OrderByPropertyName = "Name";
+            //expression.OrderByDescending = Descending;
+
+
+            var list = await CustomerManager.GetAsync(expression);
+            Customers = list.ToList();
+
+        }
+        catch (Exception ex)
+        {
+            var msg = ex.Message;
+        }
+    }
+
+    async Task DeleteRocky()
+    {
+        var rocky = (from x in Customers
+                     where x.Email == "rocky@rhodes.com"
+                     select x).FirstOrDefault();
+        if (rocky != null)
+        {
+            await CustomerManager.DeleteAsync(rocky);
+            await Reload();
+        }
+    }
+
+    async Task DeleteHugh()
+    {
+        var hugh = (from x in Customers
+                    where x.Email == "hugh@jass.com"
+                    select x).FirstOrDefault();
+        if (hugh != null)
+        {
+            await CustomerManager.DeleteByIdAsync(hugh.Id);
+            await Reload();
+        }
+    }
+
+    async Task AddCustomer()
+    {
+        var customer = new Customer
+        {
+            Name = "New Customer",
+            Email = "new@customer.com"
+        };
+        customer = await CustomerManager.InsertAsync(customer);
+        Customers.Add(customer);
+    }
+
+    async Task UpdateIsadora()
+    {
+        var isadora = (from x in Customers
+                       where x.Email == "isadora@jarr.com"
+                       select x).FirstOrDefault();
+        if (isadora != null)
+        {
+            isadora.Email = "isadora@isadorajarr.com";
+            await CustomerManager.UpdateAsync(isadora);
+            await Reload();
+        }
+    }
+
+    async Task GetJenny()
+    {
+        JennyMessage = "";
+        var jenny = (from x in Customers
+                     where x.Email == "jenny@jones.com"
+                     select x).FirstOrDefault();
+        if (jenny != null)
+        {
+            var jennyDb = await CustomerManager.GetByIdAsync(jenny.Id);
+            if (jennyDb != null)
+            {
+                JennyMessage = $"Retrieved Jenny via Id {jennyDb.Id}";
+            }
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    protected async void OnlineStatusChanged(object sender, OnlineStatusEventArgs args)
+    {
+        if (args.IsOnline == false)
+        {
+            // reload from IndexedDB
+            Customers = (await CustomerManager.GetAllOfflineAsync()).ToList();
+        }
+        else
+        {
+            if (Initialized)
+                // reload from API
+                await Reload();
+            else
+                Initialized = true;
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        CustomerManager.OnlineStatusChanged += OnlineStatusChanged;
+        await AddCustomers();
+    }
+
+    async Task ResetData()
+    {
+        await CustomerManager.DeleteAllAsync();
+        await AddCustomers();
+    }
+
+    async Task Reload()
+    {
+        JennyMessage = "";
+        var list = await CustomerManager.GetAllAsync();
+        if (list != null)
+        {
+            Customers = list.ToList();
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    async Task AddCustomers()
+    {
+        // Added these lines to not clobber the existing data
+        var all = await CustomerManager.GetAllAsync();
+        if (all.Count() > 0)
+        {
+            await Reload();
+            return;
+        }
+
+        Customers.Clear();
+
+        await CustomerManager.InsertAsync(new Customer
+            {
+                Id = 1,
+                Name = "Isadora Jarr",
+                Email = "isadora@jarr.com"
+            });
+
+        await CustomerManager.InsertAsync(new Customer
+            {
+                Id = 2,
+                Name = "Rocky Rhodes",
+                Email = "rocky@rhodes.com"
+            });
+
+        await CustomerManager.InsertAsync(new Customer
+            {
+                Id = 3,
+                Name = "Jenny Jones",
+                Email = "jenny@jones.com"
+            });
+
+        await CustomerManager.InsertAsync(new Customer
+            {
+                Id = 4,
+                Name = "Hugh Jass",
+                Email = "hugh@jass.com"
+            });
+
+        await Reload();
+    }
+
+    void IDisposable.Dispose()
+    {
+        CustomerManager.OnlineStatusChanged -= OnlineStatusChanged;
+    }
+}
+```
+
+Update Index.razor with a button to navigate to the `Syncdemo` page:
+
+*Index.razor*:
+
+```c#
+@page "/"
+@inject NavigationManager NavigationManager
+@inject CustomerRepository CustomerManager
+
+<h1>Repository Demo</h1>
+<button @onclick="GoToSyncDemo">Go to offline sync demo</button>
+<br/><br/>
+
+@foreach (var customer in Customers)
+{
+    <p>(@customer.Id) @customer.Name, @customer.Email</p>
+}
+
+<button @onclick="UpdateIsadora">Update Isadora</button>
+<button @onclick="DeleteRocky">Delete Rocky</button>
+<button @onclick="DeleteHugh">Delete Hugh</button>
+<button @onclick="GetJenny">GetJenny</button>
+<button @onclick="ResetData">Reset Data</button>
+<br />
+<br />
+<p>
+    Search by Name: <input @bind=@SearchFilter />
+    <button @onclick="Search">Search</button>
+    <br />
+    <br />
+    <input style="zoom:1.5;" type="checkbox" @bind="CaseSensitive" /> Case Sensitive
+    <br />
+    <input style="zoom:1.5;" type="checkbox" @bind="Descending" /> Descending Order
+    <br />
+    <br />
+    Options:<br />
+    <select @onchange="SelectedOptionChanged" size=3 style="padding:10px;">
+        <option selected value="StartsWith">Starts With</option>
+        <option value="EndsWith">Ends With</option>
+        <option value="Contains">Contains</option>
+    </select>
+
+</p>
+
+<br />
+<br />
+<p>@JennyMessage</p>
+
+
+@code
+{
+    List<Customer> Customers = new List<Customer>();
+    string JennyMessage = "";
+    string SearchFilter = "";
+    bool CaseSensitive = false;
+    bool Descending = false;
+    FilterOperator filterOption = FilterOperator.StartsWith;
+
+    void SelectedOptionChanged(ChangeEventArgs args)
+    {
+        switch (args.Value.ToString())
+        {
+            case "StartsWith":
+                filterOption = FilterOperator.StartsWith;
+                break;
+            case "EndsWith":
+                filterOption = FilterOperator.EndsWith;
+                break;
+            case "Contains":
+                filterOption = FilterOperator.Contains;
+                break;
+        }
+    }
+    void GoToSyncDemo()
+    {
+        NavigationManager.NavigateTo("syncdemo");
+    }
+
+    async Task Search()
+    {
+        try
+        {
+            var expression = new QueryFilter<Customer>();
+
+            expression.FilterProperties.Add(new FilterProperty { Name = "Name", Value = SearchFilter, Operator = filterOption, CaseSensitive = CaseSensitive });
+            expression.OrderByPropertyName = "Name";
+            expression.OrderByDescending = Descending;
+
+            //// Example, return where Id = 2
+            //expression.FilterProperties.Add(new FilterProperty { Name = "Id", Value = "2", Operator = FilterOperator.Equals });
+            //expression.OrderByPropertyName = "Name";
+            //expression.OrderByDescending = Descending;
+
+            //// Example, return where Id > 1
+            //expression.FilterProperties.Add(new FilterProperty { Name = "Id", Value = "1", Operator = FilterOperator.GreaterThan });
+            //expression.OrderByPropertyName = "Name";
+            //expression.OrderByDescending = Descending;
+
+
+            var list = await CustomerManager.GetAsync(expression);
+            Customers = list.ToList();
+
+        }
+        catch (Exception ex)
+        {
+            var msg = ex.Message;
+        }
+    }
+
+    async Task DeleteRocky()
+    {
+        var rocky = (from x in Customers
+                     where x.Email == "rocky@rhodes.com"
+                     select x).FirstOrDefault();
+        if (rocky != null)
+        {
+            await CustomerManager.DeleteAsync(rocky);
+            await Reload();
+        }
+    }
+
+    async Task DeleteHugh()
+    {
+        var hugh = (from x in Customers
+                    where x.Email == "hugh@jass.com"
+                    select x).FirstOrDefault();
+        if (hugh != null)
+        {
+            await CustomerManager.DeleteByIdAsync(hugh.Id);
+            await Reload();
+        }
+    }
+
+    async Task UpdateIsadora()
+    {
+        var isadora = (from x in Customers
+                       where x.Email == "isadora@jarr.com"
+                       select x).FirstOrDefault();
+        if (isadora != null)
+        {
+            isadora.Email = "isadora@isadorajarr.com";
+            await CustomerManager.UpdateAsync(isadora);
+            await Reload();
+        }
+    }
+
+    async Task GetJenny()
+    {
+        JennyMessage = "";
+        var jenny = (from x in Customers
+                     where x.Email == "jenny@jones.com"
+                     select x).FirstOrDefault();
+        if (jenny != null)
+        {
+            var jennyDb = await CustomerManager.GetByIdAsync(jenny.Id);
+            if (jennyDb != null)
+            {
+                JennyMessage = $"Retrieved Jenny via Id {jennyDb.Id}";
+            }
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await AddCustomers();
+    }
+
+    async Task ResetData()
+    {
+        await CustomerManager.DeleteAllAsync();
+        await AddCustomers();
+    }
+
+    async Task Reload()
+    {
+        JennyMessage = "";
+        var list = await CustomerManager.GetAllAsync();
+        if (list != null)
+        {
+            Customers = list.ToList();
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    async Task AddCustomers()
+    {
+        
+        // Added these lines to not clobber the existing data
+        var all = await CustomerManager.GetAllAsync();
+        if (all.Count() > 0)
+        {
+            await Reload();
+            return;
+        }
+
+        Customers.Clear();
+
+        await CustomerManager.InsertAsync(new Customer
+            {
+                Id = 1,
+                Name = "Isadora Jarr",
+                Email = "isadora@jarr.com"
+            });
+
+        await CustomerManager.InsertAsync(new Customer
+            {
+                Id = 2,
+                Name = "Rocky Rhodes",
+                Email = "rocky@rhodes.com"
+            });
+
+        await CustomerManager.InsertAsync(new Customer
+            {
+                Id = 3,
+                Name = "Jenny Jones",
+                Email = "jenny@jones.com"
+            });
+
+        await CustomerManager.InsertAsync(new Customer
+            {
+                Id = 4,
+                Name = "Hugh Jass",
+                Email = "hugh@jass.com"
+            });
+
+        await Reload();
+    }
+}
+```
+
+Now run the app and go to the `Syncdemo` page.
 
 Try this test, run the application offline, and perform the following actions:
 
@@ -3384,145 +4247,32 @@ Try this test, run the application offline, and perform the following actions:
 
 Notice the IndexedDB shows just two customers:
 
-![IndexedDB](images/bc77f27ede50f12be11338c856c9c8a943ae85f500afba17df9d18dd13fa74e8.png)  
+![IndexedDB](images/bc77f27ede50f12be11338c856c9c8a943ae85f500afba17df9d18dd13fa74e8.png)
 
 Also noticed that there is a new `Customers_transactions` table with all the transaction data we recorded.
 
-![Customers_transactions](images/5e569a26dbb5ab83107993fe8e94197bcb6a0f4a158b3e169086c0cec208fc2f.png)  
+![image-20220609211634755](images/image-20220609211634755.png)
 
-Now, enable back Network connectivity, and click on Reset Data.
+Now, enable back Network connectivity, and the database will sync.
 
-If you refresh the IndexedDB, you will notice it will still show up two customers, but if you display the data in the RepositoryDemo SQL database, you will see all customers got reloaded.
+If you refresh the IndexedDB, you will notice it will still show up two customers, and if you display the data in the RepositoryDemo SQL database, you will see two customers only.
 
-![SQL Database](images/c58ef6d6a641bf3caed297a880ed9ead97d819c66fc080c6724f784c0019a037.png)  
+![image-20220609211836651](images/image-20220609211836651.png)
 
-This is because both databases are independent of each other, and we are performing data operations on either instance. Now, let's add the ability to synchronize both databases in the next demo.
+There is still a lot of work to do, but this is a start. Please consider contributing to this repo.
 
-### Sync Databases
+## TIP:
 
-In this demo, we are going to cover synchronizing data from the local `Customer_transactions` table, to the server, by replaying all transactions that happened locally while running offline, as soon as we become online.
+> As you work with IndexedDB via BlazorDB, you may find a situation where after changing the schema of the database in *Program.cs*, the changes are not reflected in the browser tools Application tab. If that's the case, just bump up the hosting ports in the Server project's *Properties/launchSettings.json* file. 
+>
+> ![image-20220610091423952](images/image-20220610091423952.png)
+>
+> Adding one to each of these ports, effectively changes the url, which means your IndexedDB database will be created anew.
 
-Still working on the `IndexedDBSyncRepository.cs` file, update the `OnConnectivityChanged` method like this:
+## Using SignalR to sync database actions when online
 
-```csharp
-    [JSInvokable("ConnectivityChanged")]
-    public async void OnConnectivityChanged(bool isOnline)
-    {
-        if (IsOnline != isOnline)
-        {
-            IsOnline = isOnline;
-        }
+Details will follow, but the SyncDemo is set up now to automatically sync CRUD actions from other users while online, and whenever we come back online from being offline.
 
-        if (IsOnline)
-        {
-            await SyncLocalToServer();
-        }
-    }
-```
 
-And add the following three methods:
 
-1. SyncLocalToServer()
-2. UpdateOfflineIds()
-3. UpdateOfflineAsync()
-
-```csharp
-public async Task<bool> SyncLocalToServer()
-    {
-        await EnsureManager();
-
-        var array = await manager.ToArray<LocalTransaction<TEntity>>(LocalStoreName);
-        if (array == null || array.Count == 0)
-            return true;
-        else
-        {
-            foreach (var localTransaction in array.ToList())
-            {
-                switch (localTransaction.Action)
-                {
-                    case LocalTransactionTypes.Insert:
-                        var insertedEntity = await _apiRepository.InsertAsync(localTransaction.Entity);
-                        await UpdateOfflineIds(insertedEntity, localTransaction.Entity);
-                        break;
-
-                    case LocalTransactionTypes.UpdateById:
-                        await _apiRepository.UpdateAsync(localTransaction.Entity);
-                        break;
-
-                    case LocalTransactionTypes.DeleteById:
-                        await _apiRepository.DeleteByIdAsync(localTransaction.Id);
-                        break;
-
-                    case LocalTransactionTypes.DeleteByEntity:
-                        await _apiRepository.DeleteAsync(localTransaction.Entity);
-                        break;
-
-                    case LocalTransactionTypes.DeleteAll:
-                        await _apiRepository.DeleteAllAsync();
-                        break;
-
-                    default:
-                        break;
-                }
-            }
-
-            await DeleteAllTransactionsAsync();
-            return true;
-        }
-    }
-   
-    public async Task<bool> UpdateOfflineIds(TEntity onlineEntity, TEntity offlineEntity)
-    {
-        await EnsureManager();
-
-        object Id = primaryKey.GetValue(offlineEntity);
-
-        var array = await manager.ToArray<LocalTransaction<TEntity>>(LocalStoreName);
-        if (array == null)
-            return false;
-        else
-        {
-            var items = array.Where(i => i.Entity != null).ToList();
-
-            foreach (var item in items)
-            {
-               var updatedEntity = await UpdateOfflineAsync(item, onlineEntity);
-            }
-        }
-
-        return true;
-    }
-
-    public async Task<LocalTransaction<TEntity>> UpdateOfflineAsync(LocalTransaction<TEntity> entityToUpdate, TEntity onlineEntity)
-    {
-        await EnsureManager();
-
-        object Id = primaryKey.GetValue(entityToUpdate.Entity);
-
-        entityToUpdate.Entity = onlineEntity;
-
-        try
-        {
-            await manager.UpdateRecord(new UpdateRecord<LocalTransaction<TEntity>>()
-            {
-                StoreName = LocalStoreName,
-                Record = entityToUpdate,
-                Key = Id
-            });
-
-            return entityToUpdate;
-        }
-        catch (Exception ex)
-        {
-            // log exception
-            return null;
-        }
-    }
-
-```
-
-When running the application online we will see that `SyncLocalToServer()` is going to get triggered, and it's going to replay all the transactions in the `Customer_transactions` table.
-
-At the end, all records from `Customer_transactions` will get deleted, as the data has been applied to the server, and the application is running online.
-
-There are obviously many other factors to consider, such as data collisions, but this is a simple demo to illustrate the synching approach, and the benefits of using the **repository` pattern**.
+### 

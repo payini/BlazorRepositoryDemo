@@ -3,6 +3,10 @@ global using Newtonsoft.Json;
 global using System.Net;
 global using AvnRepository;
 global using BlazorDB;
+global using Microsoft.JSInterop;
+global using Microsoft.AspNetCore.SignalR.Client;
+global using Dapper.Contrib.Extensions;
+
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using RepositoryDemo.Client;
@@ -26,18 +30,24 @@ builder.Services.AddBlazorDB(options =>
             Name = "Customer",      // Name of entity
             PrimaryKey = "Id",      // Primary Key of entity
             PrimaryKeyAuto = true,  // Whether or not the Primary key is generated
-            Indexes = new List<string> { "Id", "Name" }
+            Indexes = new List<string> { "Id" }
         },
-         new StoreSchema()
+        new StoreSchema()
         {
-            Name = $"Customer{Globals.LocalTransactionsSuffix}",// Name of entity
-            PrimaryKey = "Id",      // Primary Key of entity
-            PrimaryKeyAuto = true,  // Whether or not the Primary key is generated
+            Name = $"Customer{Globals.LocalTransactionsSuffix}",
+            PrimaryKey = "Id",
+            PrimaryKeyAuto = true,
+            Indexes = new List<string> { "Id" }
+        },
+        new StoreSchema()
+        {
+            Name = $"Customer{Globals.KeysSuffix}",
+            PrimaryKey = "Id",
+            PrimaryKeyAuto = true,
             Indexes = new List<string> { "Id" }
         }
     };
 });
 
-builder.Services.AddScoped<CustomerRepository>();
 builder.Services.AddScoped<CustomerIndexedDBSyncRepository>();
 await builder.Build().RunAsync();

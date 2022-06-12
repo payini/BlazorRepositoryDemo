@@ -37,6 +37,6 @@ else
     }
 
     public async ValueTask DisposeAsync() {
-        await _jsRuntime.InvokeVoidAsync("connectivity.dispose");
+        await _jsRuntime.InvokeVoidAsync("connectivity.`dispose`");
     }
 }
